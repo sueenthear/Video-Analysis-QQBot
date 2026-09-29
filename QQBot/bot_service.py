@@ -207,8 +207,9 @@ class DouyinLinkBot:
             self.log(f"开始解析 Bilibili：{url}")
             info = parser.parse(url)
             self.runtime.send_message(message_type, target_id, format_bilibili_info(info))
+            self._send_bilibili_video(message_type, target_id, info)
             self.stats["bilibili"] = self.stats.get("bilibili", 0) + 1
-            self.log(f"[Bilibili 解析成功] {info.bvid}，可用清晰度 {len(info.qualities)} 档")
+            self.log(f"[Bilibili 解析成功] {info.bvid}，已发送默认清晰度视频")
         except Exception as exc:
             self.stats["failed"] += 1
             self.log(f"[Bilibili 解析失败] {type(exc).__name__}: {exc}")
@@ -219,6 +220,29 @@ class DouyinLinkBot:
         finally:
             if parser is not None:
                 parser.close()
+
+    def _send_bilibili_video(self, message_type: str, target_id: int, info) -> None:
+        quality = select_default_quality(
+            info.qualities, BilibiliSettingsStore().load()["default_quality_id"]
+        )
+        if quality is None:
+            raise RuntimeError("当前视频没有不高于默认清晰度的可用视频流")
+        work_dir = Path(tempfile.mkdtemp(prefix="bilibili-qqbot-"))
+        try:
+            filename = downloader.safe_filename(
+                f"{info.author or '未知作者'}_{info.title or info.bvid}_{quality.quality_id}.mp4"
+            )
+            path = downloader.download_file(
+                quality.video_urls[0],
+                str(work_dir),
+                filename,
+                headers={"Referer": "https://www.bilibili.com/"},
+                url_fallbacks=list(quality.video_urls[1:]),
+            )
+            self.runtime.send_video(message_type, target_id, path)
+            self.log(f"[Bilibili 视频] 已发送 {quality.name} ({quality.width}x{quality.height})")
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
 
     def _send_video_post(self, message_type: str, target_id: int, info, work_dir: Path) -> None:
         if not info.play_url:
