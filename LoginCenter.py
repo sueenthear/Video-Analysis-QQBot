@@ -16,7 +16,7 @@ from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-    QPlainTextEdit, QVBoxLayout, QWidget,
+    QPlainTextEdit, QProgressBar, QVBoxLayout, QWidget,
 )
 from qfluentwidgets import (
     FluentIcon as FIF, FluentWindow, NavigationItemPosition, PushButton,
@@ -84,6 +84,8 @@ class UiSignals(QObject):
     napcat_probe_done = Signal()
     bilibili_parse_result = Signal(str, str, str)
     ffmpeg_result = Signal(bool, str)
+    ffmpeg_progress = Signal(int)
+    ffmpeg_detail = Signal(str)
     runtime_status = Signal(str, str)
     napcat_config_saved = Signal(object)
     platform_enabled_changed = Signal(str, bool)
@@ -342,6 +344,10 @@ class BilibiliPage(LoginPage):
         self.check_button = PushButton("检查登录状态", self, FIF.INFO)
         self.ffmpeg_check_button = PushButton("检测 FFmpeg", self, FIF.INFO)
         self.ffmpeg_install_button = PushButton("一键安装 FFmpeg", self, FIF.DOWNLOAD)
+        self.ffmpeg_progress = QProgressBar(self)
+        self.ffmpeg_progress.setRange(0, 100)
+        self.ffmpeg_progress.setValue(0)
+        self.ffmpeg_detail = StrongBodyLabel("等待下载")
         self.quality_store = BilibiliSettingsStore()
         self.quality_combo = ComboBox(self)
         saved_quality = self.quality_store.load()["default_quality_id"]
@@ -364,12 +370,14 @@ class BilibiliPage(LoginPage):
         self.layout.insertWidget(7, self.check_button)
         self.layout.insertWidget(8, self.ffmpeg_check_button)
         self.layout.insertWidget(9, self.ffmpeg_install_button)
-        self.layout.insertWidget(10, StrongBodyLabel("默认清晰度"))
-        self.layout.insertWidget(11, self.quality_combo)
-        self.layout.insertWidget(12, StrongBodyLabel("分享链接试解析"))
-        self.layout.insertWidget(13, self.parse_input)
-        self.layout.insertWidget(14, self.parse_button)
-        self.layout.insertWidget(15, self.parse_output)
+        self.layout.insertWidget(10, self.ffmpeg_progress)
+        self.layout.insertWidget(11, self.ffmpeg_detail)
+        self.layout.insertWidget(12, StrongBodyLabel("默认清晰度"))
+        self.layout.insertWidget(13, self.quality_combo)
+        self.layout.insertWidget(14, StrongBodyLabel("分享链接试解析"))
+        self.layout.insertWidget(15, self.parse_input)
+        self.layout.insertWidget(16, self.parse_button)
+        self.layout.insertWidget(17, self.parse_output)
         self.login_button.clicked.connect(self.start_login)
         self.refresh_button.clicked.connect(self.refresh_cookie)
         self.clear_button.clicked.connect(self.clear_persistence)
@@ -381,6 +389,8 @@ class BilibiliPage(LoginPage):
         signals.bilibili_log.connect(self.append_log)
         signals.bilibili_parse_result.connect(self._on_parse_result)
         signals.ffmpeg_result.connect(self._on_ffmpeg_result)
+        signals.ffmpeg_progress.connect(self.ffmpeg_progress.setValue)
+        signals.ffmpeg_detail.connect(self.ffmpeg_detail.setText)
         self.signals.bilibili_log.emit(f"Cookie 文件：{self.manager.cookie_path}")
         self.signals.bilibili_log.emit(f"浏览器 profile：{self.manager.profile_dir}")
         QTimer.singleShot(0, self.check_login)
@@ -428,11 +438,17 @@ class BilibiliPage(LoginPage):
         for button in (self.login_button, self.refresh_button, self.clear_button, self.check_button, self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button):
             button.setEnabled(False)
         self.set_status("状态：正在下载并安装 FFmpeg…", "#d99b00")
+        self.ffmpeg_progress.setValue(0)
+        self.ffmpeg_detail.setText("准备下载")
         self.signals.bilibili_log.emit("开始安装 FFmpeg；下载期间请观察日志进度")
 
         def work():
             try:
-                executable = install_ffmpeg(self.signals.bilibili_log.emit)
+                executable = install_ffmpeg(
+                    self.signals.bilibili_log.emit,
+                    self.signals.ffmpeg_progress.emit,
+                    self.signals.ffmpeg_detail.emit,
+                )
                 self.signals.ffmpeg_result.emit(True, f"FFmpeg 安装成功：{ffmpeg_version(executable)}")
             except Exception as exc:
                 self.signals.ffmpeg_result.emit(False, f"FFmpeg 安装失败：{type(exc).__name__}: {exc}")
@@ -440,6 +456,8 @@ class BilibiliPage(LoginPage):
         threading.Thread(target=work, name="bilibili-ffmpeg-install", daemon=True).start()
 
     def _on_ffmpeg_result(self, success: bool, message: str):
+        self.ffmpeg_progress.setValue(100 if success else 0)
+        self.ffmpeg_detail.setText("安装完成" if success else "安装失败")
         self.set_status(f"状态：{message}", "#2e8b57" if success else "#c4314b")
         self.signals.bilibili_log.emit(message, "info" if success else "error")
         self.signals.bilibili_log.emit(message, "info" if success else "error")

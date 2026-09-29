@@ -10,6 +10,8 @@ import zipfile
 from pathlib import Path
 from typing import Callable
 
+import requests
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_FFMPEG_DIR = PROJECT_ROOT / "ffmpeg"
 PROJECT_FFMPEG = PROJECT_FFMPEG_DIR / "ffmpeg.exe"
@@ -32,20 +34,43 @@ def find_ffmpeg() -> str | None:
     return system_path
 
 
-def install_ffmpeg(progress: Callable[[str], None] | None = None) -> str:
+def install_ffmpeg(
+    progress: Callable[[str], None] | None = None,
+    progress_value: Callable[[int], None] | None = None,
+    progress_detail: Callable[[str], None] | None = None,
+) -> str:
     """Download and install shared FFmpeg executables into the project root."""
     report = progress or (lambda _message: None)
+    set_progress = progress_value or (lambda _value: None)
+    detail = progress_detail or (lambda _message: None)
+    set_progress(0)
     PROJECT_FFMPEG_DIR.mkdir(parents=True, exist_ok=True)
     report("准备下载 FFmpeg 安装包…")
+    set_progress(5)
     with tempfile.TemporaryDirectory(prefix="bili-ffmpeg-") as temp_dir:
         archive = Path(temp_dir) / "ffmpeg.zip"
         report("正在下载 FFmpeg（安装包较大，请耐心等待）…")
-        subprocess.run(
-            ["curl.exe", "-L", "--fail", "--show-error", "--progress-bar", DOWNLOAD_URL, "-o", str(archive)],
-            check=True,
-            timeout=600,
-        )
+        set_progress(10)
+        try:
+            response = requests.get(DOWNLOAD_URL, stream=True, timeout=60)
+            response.raise_for_status()
+            total = int(response.headers.get("Content-Length") or 0)
+            downloaded = 0
+            with archive.open("wb") as output:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if not chunk:
+                        continue
+                    output.write(chunk)
+                    downloaded += len(chunk)
+                    if total:
+                        set_progress(10 + int(downloaded * 60 / total))
+                        detail(f"下载中：{downloaded / 1024 / 1024:.1f} / {total / 1024 / 1024:.1f} MB")
+                    else:
+                        detail(f"下载中：{downloaded / 1024 / 1024:.1f} MB")
+        except requests.RequestException as exc:
+            raise RuntimeError(f"FFmpeg 下载失败：{exc}") from exc
         report(f"下载完成：{archive.stat().st_size / 1024 / 1024:.1f} MB，正在解压…")
+        set_progress(75)
         with zipfile.ZipFile(archive) as package:
             names = package.namelist()
             binaries = {}
