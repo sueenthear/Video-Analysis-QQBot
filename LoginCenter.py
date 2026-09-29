@@ -862,6 +862,8 @@ class RuntimePage(LoginPage):
         signals.napcat_config_saved.connect(self._on_config_saved)
         signals.platform_enabled_changed.connect(self._on_platform_enabled_changed)
         signals.log.connect(self.append_log)
+        signals.douyin_log.connect(self.append_log)
+        signals.bilibili_log.connect(self.append_log)
         if not self.enabled_platforms["douyin"]:
             self.douyin_status.set_state("unknown", "解析已关闭")
         if not self.enabled_platforms["bilibili"]:
