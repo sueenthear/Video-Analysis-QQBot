@@ -428,20 +428,28 @@ class BilibiliPage(LoginPage):
         if quality_id is not None:
             self.quality_store.save(int(quality_id))
 
+    def _sync_ffmpeg_button(self):
+        executable = find_ffmpeg()
+        ready = bool(executable)
+        self.ffmpeg_install_button.setEnabled(not ready)
+        self.ffmpeg_install_button.setText("FFmpeg 已就绪" if ready else "一键安装 FFmpeg")
+        return ready
+
     def check_ffmpeg(self):
         executable = find_ffmpeg()
         if executable:
-            self.ffmpeg_install_button.setEnabled(False)
-            self.ffmpeg_install_button.setText("FFmpeg 已就绪")
+            self._sync_ffmpeg_button()
             self.set_status("状态：FFmpeg 已就绪", "#2e8b57")
             self.signals.bilibili_log.emit(f"FFmpeg 已就绪：{ffmpeg_version(executable)}")
         else:
-            self.ffmpeg_install_button.setEnabled(True)
-            self.ffmpeg_install_button.setText("一键安装 FFmpeg")
+            self._sync_ffmpeg_button()
             self.set_status("状态：未找到 FFmpeg，请点击一键安装", "#c4314b")
             self.signals.bilibili_log.emit("未找到 FFmpeg；Bilibili DASH 视频需要先安装 FFmpeg", "warning")
 
     def install_ffmpeg(self):
+        if self._sync_ffmpeg_button():
+            self.signals.bilibili_log.emit("FFmpeg 已就绪，跳过重复下载")
+            return
         for button in (self.login_button, self.refresh_button, self.clear_button, self.check_button, self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button):
             button.setEnabled(False)
         self.set_status("状态：正在下载并安装 FFmpeg…", "#d99b00")
