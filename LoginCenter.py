@@ -337,8 +337,9 @@ class BilibiliPage(LoginPage):
         self.title_layout.addWidget(self.enable_switch)
         self.enable_switch.checkedChanged.connect(self._on_enabled_changed)
         self.login_button = PushButton("验证/扫码登录", self, FIF.QRCODE)
+        self.refresh_button = PushButton("复用 profile 刷新 Cookie", self, FIF.SYNC)
         self.clear_button = PushButton("清空本地持久化", self, FIF.DELETE)
-        self.check_button = PushButton("检查登录状态", self, FIF.SYNC)
+        self.check_button = PushButton("检查登录状态", self, FIF.INFO)
         self.ffmpeg_check_button = PushButton("检测 FFmpeg", self, FIF.INFO)
         self.ffmpeg_install_button = PushButton("一键安装 FFmpeg", self, FIF.DOWNLOAD)
         self.quality_store = BilibiliSettingsStore()
@@ -358,17 +359,19 @@ class BilibiliPage(LoginPage):
         self.parse_output.setPlaceholderText("解析结果和当前账号可用清晰度将在此显示，不下载视频")
         self.parse_output.setMinimumHeight(150)
         self.layout.insertWidget(4, self.login_button)
-        self.layout.insertWidget(5, self.clear_button)
-        self.layout.insertWidget(6, self.check_button)
-        self.layout.insertWidget(7, self.ffmpeg_check_button)
-        self.layout.insertWidget(8, self.ffmpeg_install_button)
-        self.layout.insertWidget(9, StrongBodyLabel("默认清晰度"))
-        self.layout.insertWidget(8, self.quality_combo)
-        self.layout.insertWidget(9, StrongBodyLabel("分享链接试解析"))
-        self.layout.insertWidget(10, self.parse_input)
-        self.layout.insertWidget(11, self.parse_button)
-        self.layout.insertWidget(12, self.parse_output)
+        self.layout.insertWidget(5, self.refresh_button)
+        self.layout.insertWidget(6, self.clear_button)
+        self.layout.insertWidget(7, self.check_button)
+        self.layout.insertWidget(8, self.ffmpeg_check_button)
+        self.layout.insertWidget(9, self.ffmpeg_install_button)
+        self.layout.insertWidget(10, StrongBodyLabel("默认清晰度"))
+        self.layout.insertWidget(11, self.quality_combo)
+        self.layout.insertWidget(12, StrongBodyLabel("分享链接试解析"))
+        self.layout.insertWidget(13, self.parse_input)
+        self.layout.insertWidget(14, self.parse_button)
+        self.layout.insertWidget(15, self.parse_output)
         self.login_button.clicked.connect(self.start_login)
+        self.refresh_button.clicked.connect(self.refresh_cookie)
         self.clear_button.clicked.connect(self.clear_persistence)
         self.check_button.clicked.connect(self.check_login)
         self.ffmpeg_check_button.clicked.connect(self.check_ffmpeg)
@@ -392,7 +395,7 @@ class BilibiliPage(LoginPage):
 
     def _run(self, operation):
         for button in (
-            self.login_button, self.clear_button, self.check_button,
+            self.login_button, self.refresh_button, self.clear_button, self.check_button,
             self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button,
         ):
             button.setEnabled(False)
@@ -422,7 +425,7 @@ class BilibiliPage(LoginPage):
             self.signals.bilibili_log.emit("未找到 FFmpeg；Bilibili DASH 视频需要先安装 FFmpeg", "warning")
 
     def install_ffmpeg(self):
-        for button in (self.login_button, self.clear_button, self.check_button, self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button):
+        for button in (self.login_button, self.refresh_button, self.clear_button, self.check_button, self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button):
             button.setEnabled(False)
         self.set_status("状态：正在下载并安装 FFmpeg…", "#d99b00")
 
@@ -438,8 +441,11 @@ class BilibiliPage(LoginPage):
     def _on_ffmpeg_result(self, success: bool, message: str):
         self.set_status(f"状态：{message}", "#2e8b57" if success else "#c4314b")
         self.signals.bilibili_log.emit(message, "info" if success else "error")
-        for button in (self.login_button, self.clear_button, self.check_button, self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button):
+        for button in (self.login_button, self.refresh_button, self.clear_button, self.check_button, self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button):
             button.setEnabled(True)
+
+    def refresh_cookie(self):
+        self._run(lambda: self.manager.refresh_cookie(self.signals.bilibili_log.emit))
 
     def start_login(self):
         cookies = self.manager.load()
@@ -510,7 +516,10 @@ class BilibiliPage(LoginPage):
             self.signals.bilibili_log.emit(
                 f"登录流程结束：{message}", "info" if state == "logged_in" else "error"
             )
-        for button in (self.login_button, self.clear_button, self.check_button, self.parse_button):
+        for button in (
+            self.login_button, self.refresh_button, self.clear_button, self.check_button,
+            self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button,
+        ):
             button.setEnabled(True)
 
     def clear_persistence(self):

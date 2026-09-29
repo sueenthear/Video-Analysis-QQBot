@@ -145,6 +145,10 @@ class BilibiliLoginManager:
                 except Exception:
                     pass
 
+    def refresh_cookie(self, on_progress: Callable[[str], None] | None = None) -> tuple[bool, str]:
+        """复用已有浏览器 profile 获取并校验 Cookie，不要求重新扫码。"""
+        return self.login(on_progress or (lambda _message: ""), timeout=300)
+
     def cancel(self) -> None:
         with self._lock:
             driver = self._driver
