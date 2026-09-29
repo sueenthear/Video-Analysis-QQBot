@@ -31,7 +31,7 @@ def test_bilibili_link_replies_with_metadata_and_available_qualities(monkeypatch
     bot, calls, logs = _make_bot(monkeypatch, {"SESSDATA": "test-cookie"})
     info = BilibiliVideoInfo(
         bvid="BV1xx411c7mD", aid=123, cid=456, page=2, title="解析测试", part="第二 P",
-        author="UP 主", duration=125, cover_url="", description="",
+        author="UP 主", duration=125, cover_url="https://img/cover.jpg", description="",
         qualities=(
             QualityOption(80, "1080P 高清", 1920, 1080, ("avc1",), ("https://cdn/high",)),
             QualityOption(64, "720P 高清", 1280, 720, ("avc1",), ("https://cdn/low",)),
@@ -64,6 +64,7 @@ def test_bilibili_link_replies_with_metadata_and_available_qualities(monkeypatch
     assert "1080P 高清 (1920x1080)" in calls[1][1][2]
     assert "720P 高清 (1280x720)" in calls[1][1][2]
     assert calls[2][1][2].endswith("80.mp4")
+    assert calls[2][2]["thumb"].endswith("thumb_BV1xx411c7mD.jpg")
     assert bot.stats["bilibili"] == 1
     assert closed == [True]
     assert any("已发送默认清晰度视频" in line for line in logs)

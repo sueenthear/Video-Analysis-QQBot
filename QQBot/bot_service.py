@@ -49,17 +49,7 @@ def format_bilibili_info(info) -> str:
         f"作者：{info.author or '未知'}",
         f"分 P：{info.page} · {info.part or '默认分 P'}",
         f"时长：{duration}",
-        f"可用清晰度：{len(info.qualities)} 档",
     ]
-    default_quality = select_default_quality(
-        info.qualities, BilibiliSettingsStore().load()["default_quality_id"]
-    )
-    if default_quality:
-        lines.append(f"默认选择：{default_quality.name} ({default_quality.width}x{default_quality.height})")
-    lines.extend(
-        f"- {quality.name} ({quality.width}x{quality.height})"
-        for quality in info.qualities
-    )
     return "\n".join(lines)
 
 
@@ -95,10 +85,19 @@ def build_image_nodes(self_id: int, author: str, title: str, paths: list[str]) -
 
 
 class DouyinLinkBot:
-    def __init__(self, config: NapCatConfig, runtime: NapCatRuntime, log: Callable[[str], None]):
+    def __init__(
+        self,
+        config: NapCatConfig,
+        runtime: NapCatRuntime,
+        log: Callable[[str], None],
+        douyin_log: Callable[[str], None] | None = None,
+        bilibili_log: Callable[[str], None] | None = None,
+    ):
         self.config = config
         self.runtime = runtime
         self.log = log
+        self.douyin_log = douyin_log or log
+        self.bilibili_log = bilibili_log or log
         self._seen: set[str] = set()
         self._lock = threading.Lock()
         self.stats = {"received": 0, "video": 0, "image": 0, "bilibili": 0, "failed": 0}
@@ -155,6 +154,7 @@ class DouyinLinkBot:
         if platform == "bilibili":
             self._process_bilibili(message_type, target_id, message_id, url)
             return
+        log = self.douyin_log
         kind = guess_media_type(text)
         notice = {
             "video": "检测到抖音视频分享链接，正在解析中……",
@@ -165,12 +165,12 @@ class DouyinLinkBot:
             content = [_segment("reply", id=message_id), _segment("text", text=notice)] if message_id else notice
             self.runtime.send_message(message_type, target_id, content)
         except Exception as exc:
-            self.log(f"[进度回复失败] {type(exc).__name__}: {exc}")
+            log(f"[进度回复失败] {type(exc).__name__}: {exc}")
 
         parser = DouyinParser(cookie=CookieStore().load(), timeout=20)
         work_dir = Path(tempfile.mkdtemp(prefix="douyin-qqbot-"))
         try:
-            self.log(f"开始解析：{url}")
+            log(f"开始解析：{url}")
             info = parser.parse_text(text)
             self.runtime.send_message(message_type, target_id, format_info(info))
             if info.is_image_post:
@@ -179,24 +179,25 @@ class DouyinLinkBot:
             else:
                 self.stats["video"] += 1
                 self._send_video_post(message_type, target_id, info, work_dir)
-            self.log(f"[解析成功] {info.item_id} {_clip(info.title, 60)}")
+            log(f"[解析成功] {info.item_id} {_clip(info.title, 60)}")
         except Exception as exc:
             self.stats["failed"] += 1
-            self.log(f"[解析/媒体发送失败] {type(exc).__name__}: {exc}")
+            log(f"[解析/媒体发送失败] {type(exc).__name__}: {exc}")
             try:
                 self.runtime.send_message(message_type, target_id, f"解析失败：{type(exc).__name__}: {exc}\n链接：{url}")
             except Exception as send_exc:
-                self.log(f"[错误回复失败] {type(send_exc).__name__}: {send_exc}")
+                log(f"[错误回复失败] {type(send_exc).__name__}: {send_exc}")
         finally:
             parser.session.close()
             shutil.rmtree(work_dir, ignore_errors=True)
 
     def _process_bilibili(self, message_type: str, target_id: int, message_id: str, url: str) -> None:
+        log = self.bilibili_log
         try:
-            content = [_segment("reply", id=message_id), _segment("text", text="检测到哔哩哔哩视频链接，正在解析可用清晰度……")] if message_id else "检测到哔哩哔哩视频链接，正在解析可用清晰度……"
+            content = [_segment("reply", id=message_id), _segment("text", text="检测到哔哩哔哩视频链接，正在解析并准备发送视频……")] if message_id else "检测到哔哩哔哩视频链接，正在解析并准备发送视频……"
             self.runtime.send_message(message_type, target_id, content)
         except Exception as exc:
-            self.log(f"[Bilibili 进度回复失败] {type(exc).__name__}: {exc}")
+            log(f"[Bilibili 进度回复失败] {type(exc).__name__}: {exc}")
 
         parser = None
         try:
@@ -204,19 +205,19 @@ class DouyinLinkBot:
             if not BilibiliLoginManager.has_login_cookie(cookies):
                 raise RuntimeError("未找到 Bilibili 登录 Cookie，请先扫码登录并确认登录状态")
             parser = BilibiliParser(cookies=cookies, timeout=20)
-            self.log(f"开始解析 Bilibili：{url}")
+            log(f"开始解析 Bilibili：{url}")
             info = parser.parse(url)
             self.runtime.send_message(message_type, target_id, format_bilibili_info(info))
             self._send_bilibili_video(message_type, target_id, info)
             self.stats["bilibili"] = self.stats.get("bilibili", 0) + 1
-            self.log(f"[Bilibili 解析成功] {info.bvid}，已发送默认清晰度视频")
+            log(f"[Bilibili 解析成功] {info.bvid}，已发送默认清晰度视频")
         except Exception as exc:
             self.stats["failed"] += 1
-            self.log(f"[Bilibili 解析失败] {type(exc).__name__}: {exc}")
+            log(f"[Bilibili 解析失败] {type(exc).__name__}: {exc}")
             try:
                 self.runtime.send_message(message_type, target_id, f"哔哩哔哩解析失败：{type(exc).__name__}: {exc}\n链接：{url}")
             except Exception as send_exc:
-                self.log(f"[Bilibili 错误回复失败] {type(send_exc).__name__}: {send_exc}")
+                log(f"[Bilibili 错误回复失败] {type(send_exc).__name__}: {send_exc}")
         finally:
             if parser is not None:
                 parser.close()
@@ -239,8 +240,20 @@ class DouyinLinkBot:
                 headers={"Referer": "https://www.bilibili.com/"},
                 url_fallbacks=list(quality.video_urls[1:]),
             )
-            self.runtime.send_video(message_type, target_id, path)
-            self.log(f"[Bilibili 视频] 已发送 {quality.name} ({quality.width}x{quality.height})")
+            thumb_path = ""
+            if info.cover_url and self.runtime.detected_backend == "napcat":
+                thumb_path = downloader.download_file(
+                    info.cover_url,
+                    str(work_dir),
+                    f"thumb_{info.bvid}.jpg",
+                    headers={"Referer": "https://www.bilibili.com/"},
+                )
+            if self.runtime.detected_backend == "snowluma":
+                self.runtime.send_video(message_type, target_id, path)
+            else:
+                self.runtime.send_video(message_type, target_id, path, thumb=thumb_path)
+            suffix = "（含缩略图）" if thumb_path else ""
+            log(f"[Bilibili 视频] 已发送 {quality.name} ({quality.width}x{quality.height}){suffix}")
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
 

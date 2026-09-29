@@ -920,7 +920,13 @@ class RuntimePage(LoginPage):
     def _attach_bot_service(self, config: NapCatConfig):
         if self.runtime is None:
             raise RuntimeError("NapCat runtime 尚未连接")
-        self.bot_service = DouyinLinkBot(config, self.runtime, self.signals.log.emit)
+        self.bot_service = DouyinLinkBot(
+            config,
+            self.runtime,
+            self.signals.log.emit,
+            douyin_log=self.signals.douyin_log.emit,
+            bilibili_log=self.signals.bilibili_log.emit,
+        )
         self.runtime.on_event = self.bot_service.on_event
 
     def _finish_startup(self, generation: int, success: bool, message: str, keep_napcat: bool = False):
