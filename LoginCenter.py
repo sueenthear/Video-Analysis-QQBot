@@ -42,10 +42,12 @@ from bilicore.parser import extract_bilibili_url  # noqa: E402
 
 class LogChannel(QObject):
     message = Signal(str, str, str)
+    _write_lock = threading.Lock()
 
     def __init__(self, belong: str, parent=None):
         super().__init__(parent)
         self.belong = belong
+        self.log_dir = ROOT / "QQBot" / "logs"
 
     def connect(self, slot):
         self.message.connect(lambda timestamp, tag, msg: slot(self.format(timestamp, tag, msg)))
@@ -60,7 +62,15 @@ class LogChannel(QObject):
                 tag = "error"
             elif any(word in text for word in ("警告", "重试", "暂时", "未确认", "跳过")):
                 tag = "warning"
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now()
+        timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+        line = self.format(timestamp, tag, text)
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            with self._write_lock:
+                (self.log_dir / f"{now:%Y-%m-%d}.log").open("a", encoding="utf-8").write(line + "\n")
+        except OSError:
+            pass
         self.message.emit(timestamp, tag, text)
 
 

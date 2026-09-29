@@ -223,6 +223,7 @@ class DouyinLinkBot:
                 parser.close()
 
     def _send_bilibili_video(self, message_type: str, target_id: int, info) -> None:
+        log = self.bilibili_log
         quality = select_default_quality(
             info.qualities, BilibiliSettingsStore().load()["default_quality_id"]
         )
@@ -258,6 +259,7 @@ class DouyinLinkBot:
             shutil.rmtree(work_dir, ignore_errors=True)
 
     def _send_video_post(self, message_type: str, target_id: int, info, work_dir: Path) -> None:
+        log = self.douyin_log
         if not info.play_url:
             raise RuntimeError("未取到无水印播放地址")
         filename = downloader.build_filename(info)
@@ -284,6 +286,7 @@ class DouyinLinkBot:
         self.log(f"[视频] 已通过 {self.runtime.detected_backend or self.config.backend} 发送 video segment{suffix}")
 
     def _send_image_post(self, message_type: str, target_id: int, info, work_dir: Path) -> None:
+        log = self.douyin_log
         paths = []
         for index, image in enumerate(info.images):
             filename = f"{info.item_id}_{index + 1}.{image.ext or 'jpeg'}"
