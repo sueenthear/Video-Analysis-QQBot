@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 import tempfile
 import threading
 from pathlib import Path
@@ -241,6 +242,29 @@ class DouyinLinkBot:
                 headers={"Referer": "https://www.bilibili.com/"},
                 url_fallbacks=list(quality.video_urls[1:]),
             )
+            if not quality.audio_urls:
+                raise RuntimeError("Bilibili 未返回音频流，无法发送有声视频")
+            audio_path = downloader.download_file(
+                quality.audio_urls[0],
+                str(work_dir),
+                "audio.m4s",
+                headers={"Referer": "https://www.bilibili.com/"},
+                url_fallbacks=list(quality.audio_urls[1:]),
+            )
+            merged_path = str(work_dir / "merged.mp4")
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", path, "-i", audio_path, "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", merged_path],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    timeout=180,
+                )
+            except FileNotFoundError as exc:
+                raise RuntimeError("未找到 ffmpeg，请安装 ffmpeg 后再发送 Bilibili 视频") from exc
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                raise RuntimeError(f"Bilibili 音视频合并失败：{exc}") from exc
+            path = merged_path
             thumb_path = ""
             if info.cover_url and self.runtime.detected_backend == "napcat":
                 thumb_path = downloader.download_file(

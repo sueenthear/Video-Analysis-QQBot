@@ -38,6 +38,7 @@ from QQBot.runtime import ConfigStore, NapCatConfig, NapCatRuntime  # noqa: E402
 from bilicore import BilibiliParser, BilibiliSettingsStore, QUALITY_CHOICES, select_default_quality  # noqa: E402
 from bilicore.login import BilibiliLoginManager  # noqa: E402
 from bilicore.parser import extract_bilibili_url  # noqa: E402
+from bilicore.ffmpeg import find_ffmpeg, ffmpeg_version, install_ffmpeg  # noqa: E402
 
 
 class LogChannel(QObject):
@@ -82,6 +83,7 @@ class UiSignals(QObject):
     napcat_port_status = Signal(bool, str)
     napcat_probe_done = Signal()
     bilibili_parse_result = Signal(str, str, str)
+    ffmpeg_result = Signal(bool, str)
     runtime_status = Signal(str, str)
     napcat_config_saved = Signal(object)
     platform_enabled_changed = Signal(str, bool)
@@ -337,6 +339,8 @@ class BilibiliPage(LoginPage):
         self.login_button = PushButton("验证/扫码登录", self, FIF.QRCODE)
         self.clear_button = PushButton("清空本地持久化", self, FIF.DELETE)
         self.check_button = PushButton("检查登录状态", self, FIF.SYNC)
+        self.ffmpeg_check_button = PushButton("检测 FFmpeg", self, FIF.INFO)
+        self.ffmpeg_install_button = PushButton("一键安装 FFmpeg", self, FIF.DOWNLOAD)
         self.quality_store = BilibiliSettingsStore()
         self.quality_combo = ComboBox(self)
         saved_quality = self.quality_store.load()["default_quality_id"]
@@ -356,7 +360,9 @@ class BilibiliPage(LoginPage):
         self.layout.insertWidget(4, self.login_button)
         self.layout.insertWidget(5, self.clear_button)
         self.layout.insertWidget(6, self.check_button)
-        self.layout.insertWidget(7, StrongBodyLabel("默认清晰度"))
+        self.layout.insertWidget(7, self.ffmpeg_check_button)
+        self.layout.insertWidget(8, self.ffmpeg_install_button)
+        self.layout.insertWidget(9, StrongBodyLabel("默认清晰度"))
         self.layout.insertWidget(8, self.quality_combo)
         self.layout.insertWidget(9, StrongBodyLabel("分享链接试解析"))
         self.layout.insertWidget(10, self.parse_input)
@@ -365,10 +371,13 @@ class BilibiliPage(LoginPage):
         self.login_button.clicked.connect(self.start_login)
         self.clear_button.clicked.connect(self.clear_persistence)
         self.check_button.clicked.connect(self.check_login)
+        self.ffmpeg_check_button.clicked.connect(self.check_ffmpeg)
+        self.ffmpeg_install_button.clicked.connect(self.install_ffmpeg)
         self.parse_button.clicked.connect(self.test_parse)
         signals.bilibili_status.connect(self._on_status)
         signals.bilibili_log.connect(self.append_log)
         signals.bilibili_parse_result.connect(self._on_parse_result)
+        signals.ffmpeg_result.connect(self._on_ffmpeg_result)
         self.signals.bilibili_log.emit(f"Cookie 文件：{self.manager.cookie_path}")
         self.signals.bilibili_log.emit(f"浏览器 profile：{self.manager.profile_dir}")
         QTimer.singleShot(0, self.check_login)
@@ -382,7 +391,10 @@ class BilibiliPage(LoginPage):
         self.append_log(f"哔哩哔哩解析{'已启用' if enabled else '已停用'}")
 
     def _run(self, operation):
-        for button in (self.login_button, self.clear_button, self.check_button, self.parse_button):
+        for button in (
+            self.login_button, self.clear_button, self.check_button,
+            self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button,
+        ):
             button.setEnabled(False)
         self.set_status("状态：任务进行中…", "#d99b00")
 
@@ -399,6 +411,35 @@ class BilibiliPage(LoginPage):
         quality_id = self.quality_combo.currentData()
         if quality_id is not None:
             self.quality_store.save(int(quality_id))
+
+    def check_ffmpeg(self):
+        executable = find_ffmpeg()
+        if executable:
+            self.set_status("状态：FFmpeg 已就绪", "#2e8b57")
+            self.signals.bilibili_log.emit(f"FFmpeg 已就绪：{ffmpeg_version(executable)}")
+        else:
+            self.set_status("状态：未找到 FFmpeg，请点击一键安装", "#c4314b")
+            self.signals.bilibili_log.emit("未找到 FFmpeg；Bilibili DASH 视频需要先安装 FFmpeg", "warning")
+
+    def install_ffmpeg(self):
+        for button in (self.login_button, self.clear_button, self.check_button, self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button):
+            button.setEnabled(False)
+        self.set_status("状态：正在下载并安装 FFmpeg…", "#d99b00")
+
+        def work():
+            try:
+                executable = install_ffmpeg()
+                self.signals.ffmpeg_result.emit(True, f"FFmpeg 安装成功：{ffmpeg_version(executable)}")
+            except Exception as exc:
+                self.signals.ffmpeg_result.emit(False, f"FFmpeg 安装失败：{type(exc).__name__}: {exc}")
+
+        threading.Thread(target=work, name="bilibili-ffmpeg-install", daemon=True).start()
+
+    def _on_ffmpeg_result(self, success: bool, message: str):
+        self.set_status(f"状态：{message}", "#2e8b57" if success else "#c4314b")
+        self.signals.bilibili_log.emit(message, "info" if success else "error")
+        for button in (self.login_button, self.clear_button, self.check_button, self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button):
+            button.setEnabled(True)
 
     def start_login(self):
         cookies = self.manager.load()

@@ -83,6 +83,8 @@ uv run python LoginCenter.py
 
 Bilibili 默认清晰度遵循以下规则：选择“不高于默认档位的最高可用画质”。例如默认设置为 1080P，而账号只能获取 720P，则发送 720P。默认清晰度只用于选择实际发送的视频，不会出现在 QQ 返回文本中。
 
+Bilibili DASH 视频的音频和视频是分离流。发送视频前需要 `ffmpeg` 合并音视频。哔哩哔哩页面提供 `检测 FFmpeg` 和 `一键安装 FFmpeg`，安装到 `BiliCore/bilicore/ffmpeg/`，不会修改系统 PATH。
+
 ## QQ 回复流程
 
 收到白名单内的抖音或 Bilibili 链接后，机器人会先发送引用进度消息。

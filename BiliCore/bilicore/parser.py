@@ -88,6 +88,7 @@ class QualityOption:
     height: int
     codecs: tuple[str, ...]
     video_urls: tuple[str, ...]
+    audio_urls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -194,7 +195,12 @@ class BilibiliParser:
 
         quality_labels = {}
         grouped: dict[int, list[dict]] = {}
+        audio_urls: list[str] = []
         for play in play_responses:
+            for audio in (play.get("dash") or {}).get("audio") or []:
+                candidates = [audio.get("baseUrl") or audio.get("base_url")]
+                candidates.extend(audio.get("backupUrl") or audio.get("backup_url") or [])
+                audio_urls.extend(str(value) for value in candidates if value)
             for item in play.get("support_formats") or []:
                 if isinstance(item, dict) and str(item.get("quality", "")).isdigit():
                     quality_labels[int(item["quality"])] = str(
@@ -234,6 +240,7 @@ class BilibiliParser:
                 height=first["height"],
                 codecs=tuple(dict.fromkeys(item["codec"] for item in entries)),
                 video_urls=tuple(url for item in entries for url in item["urls"]),
+                audio_urls=tuple(dict.fromkeys(audio_urls)),
             ))
         if not qualities:
             raise RuntimeError("Bilibili 未返回当前账号可用的视频流；请检查登录状态或稍后重试")

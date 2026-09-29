@@ -54,7 +54,10 @@ def test_parser_returns_available_qualities_for_selected_page(monkeypatch):
                 {"quality": 64, "new_description": "720P"},
                 {"quality": 127, "new_description": "8K"},
             ],
-            "dash": {"video": streams},
+            "dash": {
+                "video": streams,
+                "audio": [{"baseUrl": "https://cdn/audio", "backupUrl": ["https://backup/audio"]}],
+            },
         }
 
     monkeypatch.setattr(parser, "_signed_get", fake_get_json)
@@ -72,6 +75,7 @@ def test_parser_returns_available_qualities_for_selected_page(monkeypatch):
     ]
     assert info.qualities[1].codecs == ("hev1", "avc1")
     assert info.qualities[1].video_urls == ("https://cdn/1080-hevc", "https://cdn/1080-avc")
+    assert info.qualities[1].audio_urls == ("https://cdn/audio", "https://backup/audio")
     assert [call[1]["qn"] for call in calls if call[0] == bili_parser.PLAYURL_URL] == [80, 127]
     assert all(call[1]["cid"] == 20 for call in calls if call[0] == bili_parser.PLAYURL_URL)
 
@@ -113,7 +117,7 @@ def test_http_flow_fetches_nav_keys_and_sends_signed_view_and_playurl(monkeypatc
             "dash": {"video": [{
                 "id": quality, "width": height * 16 // 9, "height": height,
                 "codecs": "avc1", "baseUrl": f"https://cdn/{quality}",
-            }]},
+            }], "audio": [{"baseUrl": "https://cdn/audio"}]},
         }})
 
     monkeypatch.setattr(parser.session, "get", fake_get)
@@ -135,6 +139,7 @@ def test_http_flow_fetches_nav_keys_and_sends_signed_view_and_playurl(monkeypatc
         if url == bili_parser.PLAYURL_URL:
             assert params["fnval"] == "4048"
     assert [(item.quality_id, item.height) for item in info.qualities] == [(127, 4320), (64, 720)]
+    assert info.qualities[0].audio_urls == ("https://cdn/audio",)
 
 
 def test_parser_reports_unavailable_page(monkeypatch):
