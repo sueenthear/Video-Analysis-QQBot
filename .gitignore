@@ -18,7 +18,9 @@ BiliCore/bilicore/.browser_profile/
 QQBot/config.json
 QQBot/allow.txt
 QQBot/platforms.json
-QQBot/logs/
+
+# Runtime logs
+logs/
 
 # Downloaded media
 output/

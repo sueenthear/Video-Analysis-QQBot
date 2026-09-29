@@ -47,7 +47,7 @@ class LogChannel(QObject):
     def __init__(self, belong: str, parent=None):
         super().__init__(parent)
         self.belong = belong
-        self.log_dir = ROOT / "QQBot" / "logs"
+        self.log_dir = ROOT / "logs"
 
     def connect(self, slot):
         self.message.connect(lambda timestamp, tag, msg: slot(self.format(timestamp, tag, msg)))
