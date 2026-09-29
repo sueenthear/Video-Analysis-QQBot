@@ -314,6 +314,7 @@ class BilibiliPage(LoginPage):
         super().__init__("哔哩哔哩登录", "通过系统浏览器扫码登录；Cookie 保存在独立本地文件。")
         self.signals = signals
         self.log_belong = "哔哩哔哩"
+        self._last_login_log: tuple[str, str] | None = None
         self.manager = BilibiliLoginManager()
         self.feature_store = PlatformFeatureStore()
         self.features = self.feature_store.load()
@@ -452,7 +453,12 @@ class BilibiliPage(LoginPage):
     def _on_status(self, state: str, message: str):
         color = "#2e8b57" if state == "logged_in" else "#c4314b"
         self.set_status(f"状态：{message}", color)
-        self.signals.bilibili_log.emit(f"登录流程结束：{message}", "info" if state == "logged_in" else "error")
+        login_result = (state, message)
+        if login_result != self._last_login_log:
+            self._last_login_log = login_result
+            self.signals.bilibili_log.emit(
+                f"登录流程结束：{message}", "info" if state == "logged_in" else "error"
+            )
         for button in (self.login_button, self.clear_button, self.check_button, self.parse_button):
             button.setEnabled(True)
 
