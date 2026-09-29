@@ -320,7 +320,7 @@ class DouyinPage(LoginPage):
         self.set_status(f"状态：{message}", colors.get(state, "#8a8f98"))
         if state not in (LoginState.CHECKING.value, LoginState.WAITING.value):
             self._set_busy(False)
-            self.append_log(f"登录流程结束：{message}")
+            self.signals.douyin_log.emit(f"登录流程结束：{message}")
 
 
 class BilibiliPage(LoginPage):
