@@ -396,6 +396,7 @@ class BilibiliPage(LoginPage):
         self.signals.bilibili_log.emit(f"Cookie 文件：{self.manager.cookie_path}")
         self.signals.bilibili_log.emit(f"浏览器 profile：{self.manager.profile_dir}")
         QTimer.singleShot(0, self.check_login)
+        QTimer.singleShot(0, self.check_ffmpeg)
 
     def _on_enabled_changed(self, enabled: bool):
         self.features["bilibili"] = bool(enabled)
@@ -430,9 +431,13 @@ class BilibiliPage(LoginPage):
     def check_ffmpeg(self):
         executable = find_ffmpeg()
         if executable:
+            self.ffmpeg_install_button.setEnabled(False)
+            self.ffmpeg_install_button.setText("FFmpeg 已就绪")
             self.set_status("状态：FFmpeg 已就绪", "#2e8b57")
             self.signals.bilibili_log.emit(f"FFmpeg 已就绪：{ffmpeg_version(executable)}")
         else:
+            self.ffmpeg_install_button.setEnabled(True)
+            self.ffmpeg_install_button.setText("一键安装 FFmpeg")
             self.set_status("状态：未找到 FFmpeg，请点击一键安装", "#c4314b")
             self.signals.bilibili_log.emit("未找到 FFmpeg；Bilibili DASH 视频需要先安装 FFmpeg", "warning")
 
@@ -464,6 +469,12 @@ class BilibiliPage(LoginPage):
         self.ffmpeg_detail.setText("安装完成" if success else "安装失败")
         self.ffmpeg_progress.hide()
         self.ffmpeg_detail.hide()
+        if success:
+            self.ffmpeg_install_button.setEnabled(False)
+            self.ffmpeg_install_button.setText("FFmpeg 已就绪")
+        else:
+            self.ffmpeg_install_button.setEnabled(True)
+            self.ffmpeg_install_button.setText("一键安装 FFmpeg")
         self.set_status(f"状态：{message}", "#2e8b57" if success else "#c4314b")
         if not success:
             self.signals.bilibili_log.emit(message, "error")
