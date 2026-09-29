@@ -1,0 +1,31 @@
+# Python and uv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+
+# Platform-local login credentials, preferences, and browser profiles
+DouyinCore/douyin_core/cookies.json
+DouyinCore/douyin_core/.browser_profile/
+BiliCore/bilicore/cookies.json
+BiliCore/bilicore/settings.json
+BiliCore/bilicore/.browser_profile/
+
+# QQBot local connection credentials and runtime data
+QQBot/config.json
+QQBot/allow.txt
+QQBot/platforms.json
+QQBot/logs/
+
+# Downloaded media
+output/
+downloads/
+*.mp4
+*.part
+*.jpeg
+*.jpg
+*.png
+*.webp

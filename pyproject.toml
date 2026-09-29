@@ -1,0 +1,30 @@
+[project]
+name = "video-analysis-qqbot"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "gmssl>=3.2.2",
+    "pyside6>=6.11.2",
+    "pyside6-fluent-widgets>=1.11.3",
+    "requests>=2.31.0",
+    "selenium>=4.0.0",
+    "websocket-client>=1.9.2",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["DouyinCore", "BiliCore"]
+include = ["douyin_core*", "bilicore*"]
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
+pythonpath = [".", "DouyinCore", "BiliCore"]
+testpaths = ["DouyinCore/douyin_core/tests", "DouyinCore/tests", "BiliCore/tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
