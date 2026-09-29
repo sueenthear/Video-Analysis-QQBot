@@ -118,16 +118,24 @@ class BilibiliParser:
         self.session.close()
 
     def _get_json(self, url: str, params: dict | None = None) -> dict:
-        response = self.session.get(url, params=params, timeout=self.timeout)
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise RuntimeError("Bilibili API 返回格式无效")
-        code = payload.get("code", 0)
-        if code != 0:
-            message = payload.get("message") or payload.get("msg") or f"API 错误码 {code}"
-            raise RuntimeError(f"Bilibili API 请求失败：{message}")
-        return payload.get("data") or {}
+        last_error = None
+        for attempt in range(2):
+            try:
+                response = self.session.get(url, params=params, timeout=self.timeout)
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise RuntimeError("Bilibili API 返回格式无效")
+                code = payload.get("code", 0)
+                if code != 0:
+                    message = payload.get("message") or payload.get("msg") or f"API 错误码 {code}"
+                    raise RuntimeError(f"Bilibili API 请求失败：{message}")
+                return payload.get("data") or {}
+            except (requests.RequestException, ValueError, RuntimeError) as exc:
+                last_error = exc
+                if attempt == 0:
+                    time.sleep(0.4)
+        raise RuntimeError(f"Bilibili API 请求失败：{last_error}") from last_error
 
     def _get_wbi_keys(self) -> tuple[str, str]:
         if self._wbi_keys:
