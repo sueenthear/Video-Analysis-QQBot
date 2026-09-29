@@ -13,6 +13,7 @@ from douyin_core import downloader
 from douyin_core.douyin_parser import DouyinParser, extract_share_url, _image_ext
 from douyin_core.login_manager import CookieStore
 from bilicore import BilibiliParser, BilibiliSettingsStore, extract_bilibili_url, select_default_quality
+from bilicore.ffmpeg import find_ffmpeg
 from bilicore.login import BilibiliLoginManager
 
 from .runtime import NapCatConfig, NapCatRuntime
@@ -252,9 +253,12 @@ class DouyinLinkBot:
                 url_fallbacks=list(quality.audio_urls[1:]),
             )
             merged_path = str(work_dir / "merged.mp4")
+            ffmpeg_executable = find_ffmpeg()
+            if not ffmpeg_executable:
+                raise RuntimeError("未找到 ffmpeg，请在哔哩哔哩页面点击一键安装 FFmpeg")
             try:
                 subprocess.run(
-                    ["ffmpeg", "-y", "-i", path, "-i", audio_path, "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", merged_path],
+                    [ffmpeg_executable, "-y", "-i", path, "-i", audio_path, "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", merged_path],
                     check=True,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,

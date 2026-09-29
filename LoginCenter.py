@@ -465,8 +465,8 @@ class BilibiliPage(LoginPage):
         self.ffmpeg_progress.hide()
         self.ffmpeg_detail.hide()
         self.set_status(f"状态：{message}", "#2e8b57" if success else "#c4314b")
-        self.signals.bilibili_log.emit(message, "info" if success else "error")
-        self.signals.bilibili_log.emit(message, "info" if success else "error")
+        if not success:
+            self.signals.bilibili_log.emit(message, "error")
         for button in (self.login_button, self.refresh_button, self.clear_button, self.check_button, self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button):
             button.setEnabled(True)
 
