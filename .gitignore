@@ -13,7 +13,9 @@ DouyinCore/douyin_core/.browser_profile/
 BiliCore/bilicore/cookies.json
 BiliCore/bilicore/settings.json
 BiliCore/bilicore/.browser_profile/
-BiliCore/bilicore/ffmpeg/
+
+# Shared local FFmpeg binaries
+ffmpeg/
 
 # QQBot local connection credentials and runtime data
 QQBot/config.json

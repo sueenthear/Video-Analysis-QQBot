@@ -9,14 +9,22 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-PROJECT_FFMPEG_DIR = Path(__file__).resolve().parent / "ffmpeg"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_FFMPEG_DIR = PROJECT_ROOT / "ffmpeg"
 PROJECT_FFMPEG = PROJECT_FFMPEG_DIR / "ffmpeg.exe"
 PROJECT_FFPROBE = PROJECT_FFMPEG_DIR / "ffprobe.exe"
+LEGACY_FFMPEG_DIR = Path(__file__).resolve().parent / "ffmpeg"
 DOWNLOAD_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 
 
 def find_ffmpeg() -> str | None:
-    """Return project-local or system FFmpeg executable path."""
+    """Return shared project-root or system FFmpeg executable path."""
+    if not PROJECT_FFMPEG.exists() and (LEGACY_FFMPEG_DIR / "ffmpeg.exe").exists():
+        PROJECT_FFMPEG_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(LEGACY_FFMPEG_DIR / "ffmpeg.exe"), str(PROJECT_FFMPEG))
+        legacy_probe = LEGACY_FFMPEG_DIR / "ffprobe.exe"
+        if legacy_probe.exists():
+            shutil.move(str(legacy_probe), str(PROJECT_FFPROBE))
     if PROJECT_FFMPEG.exists():
         return str(PROJECT_FFMPEG)
     system_path = shutil.which("ffmpeg")
@@ -24,7 +32,7 @@ def find_ffmpeg() -> str | None:
 
 
 def install_ffmpeg() -> str:
-    """Download and install FFmpeg executables into the BiliCore package directory."""
+    """Download and install shared FFmpeg executables into the project root."""
     PROJECT_FFMPEG_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="bili-ffmpeg-") as temp_dir:
         archive = Path(temp_dir) / "ffmpeg.zip"
