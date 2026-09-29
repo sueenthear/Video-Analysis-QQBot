@@ -428,10 +428,11 @@ class BilibiliPage(LoginPage):
         for button in (self.login_button, self.refresh_button, self.clear_button, self.check_button, self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button):
             button.setEnabled(False)
         self.set_status("状态：正在下载并安装 FFmpeg…", "#d99b00")
+        self.signals.bilibili_log.emit("开始安装 FFmpeg；下载期间请观察日志进度")
 
         def work():
             try:
-                executable = install_ffmpeg()
+                executable = install_ffmpeg(self.signals.bilibili_log.emit)
                 self.signals.ffmpeg_result.emit(True, f"FFmpeg 安装成功：{ffmpeg_version(executable)}")
             except Exception as exc:
                 self.signals.ffmpeg_result.emit(False, f"FFmpeg 安装失败：{type(exc).__name__}: {exc}")
@@ -440,6 +441,7 @@ class BilibiliPage(LoginPage):
 
     def _on_ffmpeg_result(self, success: bool, message: str):
         self.set_status(f"状态：{message}", "#2e8b57" if success else "#c4314b")
+        self.signals.bilibili_log.emit(message, "info" if success else "error")
         self.signals.bilibili_log.emit(message, "info" if success else "error")
         for button in (self.login_button, self.refresh_button, self.clear_button, self.check_button, self.ffmpeg_check_button, self.ffmpeg_install_button, self.parse_button):
             button.setEnabled(True)
