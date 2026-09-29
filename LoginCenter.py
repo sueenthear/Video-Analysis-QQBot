@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal
@@ -39,6 +40,30 @@ from bilicore.login import BilibiliLoginManager  # noqa: E402
 from bilicore.parser import extract_bilibili_url  # noqa: E402
 
 
+class LogChannel(QObject):
+    message = Signal(str, str, str)
+
+    def __init__(self, belong: str, parent=None):
+        super().__init__(parent)
+        self.belong = belong
+
+    def connect(self, slot):
+        self.message.connect(lambda timestamp, tag, msg: slot(self.format(timestamp, tag, msg)))
+
+    def format(self, timestamp: str, tag: str, msg: str) -> str:
+        return f"{timestamp} | {tag} | {self.belong} | {msg}"
+
+    def emit(self, msg: str, tag: str = "info"):
+        text = str(msg)
+        if tag == "info":
+            if any(word in text for word in ("失败", "错误", "异常", "未找到", "无效")):
+                tag = "error"
+            elif any(word in text for word in ("警告", "重试", "暂时", "未确认", "跳过")):
+                tag = "warning"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.message.emit(timestamp, tag, text)
+
+
 class UiSignals(QObject):
     status = Signal(str, str)
     bilibili_status = Signal(str, str)
@@ -50,14 +75,18 @@ class UiSignals(QObject):
     runtime_status = Signal(str, str)
     napcat_config_saved = Signal(object)
     platform_enabled_changed = Signal(str, bool)
-    douyin_log = Signal(str)
-    bilibili_log = Signal(str)
-    log = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.douyin_log = LogChannel("抖音", self)
+        self.bilibili_log = LogChannel("哔哩哔哩", self)
+        self.log = LogChannel("全局", self)
 
 
 class LoginPage(QWidget):
     def __init__(self, title: str, description: str):
         super().__init__()
+        self.log_belong = "全局"
         self.layout = QVBoxLayout(self)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setObjectName("loginPage")
@@ -87,6 +116,8 @@ class LoginPage(QWidget):
         self.status.setStyleSheet(f"color: {color};")
 
     def append_log(self, text: str):
+        if " | " not in text:
+            text = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | info | {self.log_belong} | {text}"
         self.log_box.append(text)
 
 
@@ -94,6 +125,7 @@ class DouyinPage(LoginPage):
     def __init__(self, signals: UiSignals):
         super().__init__("抖音登录", "静态 API 遇到页面签名门禁时复用已登录 Edge 页面。保持登录中心和浏览器运行。")
         self.signals = signals
+        self.log_belong = "抖音"
         self.manager = LoginManager()
         self.feature_store = PlatformFeatureStore()
         self.features = self.feature_store.load()
@@ -281,6 +313,7 @@ class BilibiliPage(LoginPage):
     def __init__(self, signals: UiSignals):
         super().__init__("哔哩哔哩登录", "通过系统浏览器扫码登录；Cookie 保存在独立本地文件。")
         self.signals = signals
+        self.log_belong = "哔哩哔哩"
         self.manager = BilibiliLoginManager()
         self.feature_store = PlatformFeatureStore()
         self.features = self.feature_store.load()
@@ -291,6 +324,7 @@ class BilibiliPage(LoginPage):
         self.title_layout.addWidget(self.enable_switch)
         self.enable_switch.checkedChanged.connect(self._on_enabled_changed)
         self.login_button = PushButton("验证/扫码登录", self, FIF.QRCODE)
+        self.clear_button = PushButton("清空本地持久化", self, FIF.DELETE)
         self.check_button = PushButton("检查登录状态", self, FIF.SYNC)
         self.quality_store = BilibiliSettingsStore()
         self.quality_combo = ComboBox(self)
@@ -309,14 +343,16 @@ class BilibiliPage(LoginPage):
         self.parse_output.setPlaceholderText("解析结果和当前账号可用清晰度将在此显示，不下载视频")
         self.parse_output.setMinimumHeight(150)
         self.layout.insertWidget(4, self.login_button)
-        self.layout.insertWidget(5, self.check_button)
-        self.layout.insertWidget(6, StrongBodyLabel("默认清晰度"))
-        self.layout.insertWidget(7, self.quality_combo)
-        self.layout.insertWidget(8, StrongBodyLabel("分享链接试解析"))
-        self.layout.insertWidget(9, self.parse_input)
-        self.layout.insertWidget(10, self.parse_button)
-        self.layout.insertWidget(11, self.parse_output)
+        self.layout.insertWidget(5, self.clear_button)
+        self.layout.insertWidget(6, self.check_button)
+        self.layout.insertWidget(7, StrongBodyLabel("默认清晰度"))
+        self.layout.insertWidget(8, self.quality_combo)
+        self.layout.insertWidget(9, StrongBodyLabel("分享链接试解析"))
+        self.layout.insertWidget(10, self.parse_input)
+        self.layout.insertWidget(11, self.parse_button)
+        self.layout.insertWidget(12, self.parse_output)
         self.login_button.clicked.connect(self.start_login)
+        self.clear_button.clicked.connect(self.clear_persistence)
         self.check_button.clicked.connect(self.check_login)
         self.parse_button.clicked.connect(self.test_parse)
         signals.bilibili_status.connect(self._on_status)
@@ -333,8 +369,8 @@ class BilibiliPage(LoginPage):
         self.append_log(f"哔哩哔哩解析{'已启用' if enabled else '已停用'}")
 
     def _run(self, operation):
-        self.login_button.setEnabled(False)
-        self.check_button.setEnabled(False)
+        for button in (self.login_button, self.clear_button, self.check_button, self.parse_button):
+            button.setEnabled(False)
         self.set_status("状态：任务进行中…", "#d99b00")
 
         def work():
@@ -414,8 +450,27 @@ class BilibiliPage(LoginPage):
     def _on_status(self, state: str, message: str):
         color = "#2e8b57" if state == "logged_in" else "#c4314b"
         self.set_status(f"状态：{message}", color)
-        self.login_button.setEnabled(True)
-        self.check_button.setEnabled(True)
+        for button in (self.login_button, self.clear_button, self.check_button, self.parse_button):
+            button.setEnabled(True)
+
+    def clear_persistence(self):
+        reply = QMessageBox.warning(
+            self, "清空哔哩哔哩本地登录态",
+            "将删除 Bilibili Cookie 和浏览器 profile。确定继续吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.manager.clear()
+            if self.manager.profile_dir.exists():
+                shutil.rmtree(self.manager.profile_dir)
+            self.set_status("状态：Bilibili 本地登录态已清空", "#2e8b57")
+            self.signals.bilibili_log.emit("已清空 cookies.json 和 .browser_profile")
+        except Exception as exc:
+            self.set_status(f"状态：清理失败：{exc}", "#c4314b")
+            self.signals.bilibili_log.emit(f"清理失败：{type(exc).__name__}: {exc}")
 
 
 class StatusIndicator(QWidget):
@@ -450,6 +505,7 @@ class StatusIndicator(QWidget):
 class NapCatPage(LoginPage):
     def __init__(self, signals: UiSignals):
         super().__init__("NapCat WebSocket", "配置 OneBot 11 正向 WebSocket。读超时须大于心跳间隔。")
+        self.log_belong = "QQbot"
         self.signals = signals
         self.store = ConfigStore()
         self.config = self.store.load()
@@ -698,6 +754,8 @@ class RuntimePage(LoginPage):
             self.bilibili_status.set_state("unknown", "解析已关闭")
 
     def append_log(self, message: str):
+        if " | " not in message:
+            message = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | info | 全局 | {message}"
         self.log_view.appendPlainText(message)
 
     def _on_config_saved(self, _config):
