@@ -17,7 +17,7 @@ PROJECT_FFMPEG_DIR = PROJECT_ROOT / "ffmpeg"
 PROJECT_FFMPEG = PROJECT_FFMPEG_DIR / "ffmpeg.exe"
 PROJECT_FFPROBE = PROJECT_FFMPEG_DIR / "ffprobe.exe"
 LEGACY_FFMPEG_DIR = Path(__file__).resolve().parent / "ffmpeg"
-DOWNLOAD_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+DOWNLOAD_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
 
 
 def find_ffmpeg() -> str | None:
@@ -73,19 +73,23 @@ def install_ffmpeg(
         set_progress(75)
         with zipfile.ZipFile(archive) as package:
             names = package.namelist()
-            binaries = {}
-            for filename in ("ffmpeg.exe", "ffprobe.exe"):
-                match = next((name for name in names if name.replace("\\", "/").endswith("/bin/" + filename)), None)
-                if match is None:
-                    raise RuntimeError(f"安装包中未找到 {filename}")
-                target = Path(temp_dir) / filename
-                with package.open(match) as source, target.open("wb") as destination:
+            bin_files = [
+                name for name in names
+                if "/bin/" in name.replace("\\", "/")
+                and not name.endswith("/")
+                and Path(name).suffix.lower() in {".exe", ".dll"}
+            ]
+            required = {"ffmpeg.exe", "ffprobe.exe"}
+            available = {Path(name).name.lower() for name in bin_files}
+            missing = required - available
+            if missing:
+                raise RuntimeError(f"安装包中未找到：{', '.join(sorted(missing))}")
+            report(f"解压完成，正在安装 FFmpeg 运行文件（{len(bin_files)} 个）…")
+            for name in bin_files:
+                target = PROJECT_FFMPEG_DIR / Path(name).name
+                with package.open(name) as source, target.open("wb") as destination:
                     shutil.copyfileobj(source, destination)
-                binaries[filename] = target
-            report("解压完成，正在安装 ffmpeg.exe…")
-            shutil.copy2(binaries["ffmpeg.exe"], PROJECT_FFMPEG)
-            report("正在安装 ffprobe.exe…")
-            shutil.copy2(binaries["ffprobe.exe"], PROJECT_FFPROBE)
+            report("ffmpeg.exe、ffprobe.exe 和运行库安装完成")
     report(f"FFmpeg 已安装到：{PROJECT_FFMPEG_DIR}")
     return str(PROJECT_FFMPEG)
 

@@ -347,7 +347,9 @@ class BilibiliPage(LoginPage):
         self.ffmpeg_progress = QProgressBar(self)
         self.ffmpeg_progress.setRange(0, 100)
         self.ffmpeg_progress.setValue(0)
+        self.ffmpeg_progress.hide()
         self.ffmpeg_detail = StrongBodyLabel("等待下载")
+        self.ffmpeg_detail.hide()
         self.quality_store = BilibiliSettingsStore()
         self.quality_combo = ComboBox(self)
         saved_quality = self.quality_store.load()["default_quality_id"]
@@ -440,6 +442,8 @@ class BilibiliPage(LoginPage):
         self.set_status("状态：正在下载并安装 FFmpeg…", "#d99b00")
         self.ffmpeg_progress.setValue(0)
         self.ffmpeg_detail.setText("准备下载")
+        self.ffmpeg_progress.show()
+        self.ffmpeg_detail.show()
         self.signals.bilibili_log.emit("开始安装 FFmpeg；下载期间请观察日志进度")
 
         def work():
@@ -458,6 +462,8 @@ class BilibiliPage(LoginPage):
     def _on_ffmpeg_result(self, success: bool, message: str):
         self.ffmpeg_progress.setValue(100 if success else 0)
         self.ffmpeg_detail.setText("安装完成" if success else "安装失败")
+        self.ffmpeg_progress.hide()
+        self.ffmpeg_detail.hide()
         self.set_status(f"状态：{message}", "#2e8b57" if success else "#c4314b")
         self.signals.bilibili_log.emit(message, "info" if success else "error")
         self.signals.bilibili_log.emit(message, "info" if success else "error")
