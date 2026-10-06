@@ -58,6 +58,9 @@ ANY_DOUYIN_URL_RE = re.compile(
 _ITEM_ID_RE = re.compile(r"(?:video|note|share/video|share/note)/(\d+)")
 _MODAL_ID_RE = re.compile(r"modal_id=(\d+)")
 _ITEM_ID_RAW_RE = re.compile(r"(\d{15,21})")
+# 网页端作品页类型：图文作品在 /note/，视频在 /video/。
+_NOTE_PATH_RE = re.compile(r"/note/", re.IGNORECASE)
+_VIDEO_PATH_RE = re.compile(r"/video/", re.IGNORECASE)
 
 
 class ParseError(Exception):
@@ -156,6 +159,19 @@ def _find_item_id_in_url(url: str) -> Optional[str]:
     return None
 
 
+def _page_kind(url: str) -> str:
+    """判断网页端作品页类型：``"note"``（图文）/ ``"video"`` / ``""``（未知）。
+
+    图文作品在网页端是 ``/note/`` 页面，浏览器兜底必须据此选对地址，
+    否则会打开不存在的视频页而取不到详情。
+    """
+    if _NOTE_PATH_RE.search(url or ""):
+        return "note"
+    if _VIDEO_PATH_RE.search(url or ""):
+        return "video"
+    return ""
+
+
 def _format_create_time(ts) -> str:
     try:
         return datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M")
@@ -225,17 +241,20 @@ class DouyinParser:
         return self.parse_url(url)
 
     def parse_url(self, url: str) -> VideoInfo:
-        item_id = self._resolve_item_id(url)
-        info = self._fetch_info(item_id)
-        return info
+        item_id, kind = self._resolve_item_id(url)
+        return self._fetch_info(item_id, kind)
 
     # ----- 链接解析 -----
 
-    def _resolve_item_id(self, url: str) -> str:
-        """把任意抖音链接解析为 item_id。"""
+    def _resolve_item_id(self, url: str) -> tuple[str, str]:
+        """把任意抖音链接解析为 ``(item_id, page_kind)``。
+
+        ``page_kind`` 为 ``"video"`` / ``"note"`` / ``""``（无法判断）。
+        短链接会先跟随重定向，类型取自最终落地地址。
+        """
         m = _ITEM_ID_RE.search(url)
         if m:
-            return m.group(1)
+            return m.group(1), _page_kind(url)
 
         if "v.douyin.com" in url:
             try:
@@ -247,13 +266,13 @@ class DouyinParser:
                 raise ParseError(f"短链接请求失败：{e}")
             item_id = _find_item_id_in_url(final)
             if item_id:
-                return item_id
+                return item_id, _page_kind(final)
             raise ParseError(f"短链接跳转后未能识别视频 ID（{final[:120]}）")
 
         # 其他域名：尝试从 URL 直接找数字 ID
         item_id = _find_item_id_in_url(url)
         if item_id:
-            return item_id
+            return item_id, _page_kind(url)
         raise ParseError(f"无法从链接中识别视频 ID：{url[:120]}")
 
     # ----- 信息获取（多级回退） -----
@@ -263,7 +282,7 @@ class DouyinParser:
         """是否拿到有效内容：视频看播放地址，图文看图片列表。"""
         return bool(info.play_url) or bool(info.images)
 
-    def _fetch_info(self, item_id: str) -> VideoInfo:
+    def _fetch_info(self, item_id: str, kind: str = "") -> VideoInfo:
         """获取作品信息。
 
         **只有一条有效路径**：官方 Web API（``/aweme/v1/web/aweme/detail/``）。
@@ -290,7 +309,7 @@ class DouyinParser:
             try:
                 from .browser_bridge import fetch_detail_from_browser
 
-                detail = fetch_detail_from_browser(item_id)
+                detail = fetch_detail_from_browser(item_id, kind=kind)
             except Exception as bridge_error:
                 raise ParseError(
                     f"接口风控（{api_error}）；浏览器页面解析也未成功：{bridge_error}"

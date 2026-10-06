@@ -142,7 +142,7 @@ def test_fetch_info_uses_browser_after_static_api_risk(monkeypatch):
     monkeypatch.setattr(
         bridge,
         "fetch_detail_from_browser",
-        lambda item_id: {
+        lambda item_id, **_kwargs: {
             "aweme_id": item_id,
             "desc": "浏览器页面结果",
             "video": {"play_addr": {"url_list": ["https://cdn.example/video.mp4"]}},
@@ -164,7 +164,7 @@ def test_fetch_info_reports_browser_bridge_failure(monkeypatch):
     monkeypatch.setattr(
         bridge,
         "fetch_detail_from_browser",
-        lambda item_id: (_ for _ in ()).throw(RuntimeError("profile busy")),
+        lambda item_id, **_kwargs: (_ for _ in ()).throw(RuntimeError("profile busy")),
     )
     with pytest.raises(ParseError, match="浏览器页面解析也未成功.*profile busy"):
         parser._fetch_info("123")
@@ -181,7 +181,7 @@ def test_fetch_info_does_not_open_browser_for_plain_rate_limit(monkeypatch):
     monkeypatch.setattr(
         bridge,
         "fetch_detail_from_browser",
-        lambda item_id: pytest.fail("普通频率限制不应启动浏览器桥接"),
+        lambda item_id, **_kwargs: pytest.fail("普通频率限制不应启动浏览器桥接"),
     )
     with pytest.raises(ParseError, match="官方接口不可用.*HTTP 403"):
         parser._fetch_info("123")
@@ -209,7 +209,7 @@ def test_fetch_info_uses_browser_bridge_after_argus_rejection(monkeypatch):
     )
     calls = []
 
-    def browser_detail(item_id):
+    def browser_detail(item_id, **_kwargs):
         calls.append(item_id)
         return {
             "aweme_id": item_id,
@@ -263,6 +263,43 @@ def test_fetch_info_raises_when_no_content(monkeypatch):
         lambda item_id, cookie="", **kw: {"aweme_id": item_id, "desc": "空"})
     with pytest.raises(ParseError, match="未返回播放地址或图片"):
         parser._fetch_info("123")
+
+
+def test_resolve_item_id_returns_page_kind():
+    """图文作品在网页端是 /note/，解析时必须把页面类型一并带出。"""
+    parser = DouyinParser()
+    assert parser._resolve_item_id(
+        "https://www.douyin.com/note/7412345678901234567") == ("7412345678901234567", "note")
+    assert parser._resolve_item_id(
+        "https://www.douyin.com/video/7412345678901234567") == ("7412345678901234567", "video")
+
+
+def test_fetch_info_passes_page_kind_to_browser_bridge(monkeypatch):
+    """浏览器兜底需要知道作品页类型：图文走 /note/，否则会打开不存在的视频页。"""
+    parser = DouyinParser()
+    monkeypatch.setattr(
+        "douyin_core.douyin_parser.douyin_api.fetch_video_detail",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            douyin_api.PageSignatureRequiredError("Uifid Not Found")),
+    )
+    import douyin_core.browser_bridge as bridge
+    calls = []
+
+    def browser_detail(item_id, **kwargs):
+        calls.append((item_id, kwargs))
+        return {
+            "aweme_id": item_id,
+            "desc": "图文标题",
+            "images": [{"url_list": ["https://cdn.example/1.jpeg"]}],
+        }
+
+    monkeypatch.setattr(bridge, "fetch_detail_from_browser", browser_detail)
+
+    info = parser._fetch_info("7412345678901234567", "note")
+
+    assert calls == [("7412345678901234567", {"kind": "note"})]
+    assert info.is_image_post
+    assert info.images[0].url == "https://cdn.example/1.jpeg"
 
 
 # ---------------------------------------------------------------- 页面 JSON
