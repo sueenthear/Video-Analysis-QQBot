@@ -34,3 +34,7 @@ downloads/
 *.jpg
 *.png
 *.webp
+
+# Local handover notes and IDE workspace files: never publish
+HANDOFF.md
+.idea/
