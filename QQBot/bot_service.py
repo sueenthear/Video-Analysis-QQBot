@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+import json
 import shutil
 import subprocess
 import tempfile
@@ -137,17 +139,41 @@ class DouyinLinkBot:
 
     @staticmethod
     def _message_text(event: dict) -> str:
-        raw = event.get("raw_message")
-        if isinstance(raw, str) and raw:
-            return raw
         message = event.get("message")
         if isinstance(message, str):
-            return message
-        return "".join(
-            str((segment.get("data") or {}).get("text") or "")
-            for segment in (message or [])
-            if isinstance(segment, dict) and segment.get("type") == "text"
-        )
+            return html.unescape(message)
+
+        def flatten(value) -> list[str]:
+            if isinstance(value, str):
+                return [value]
+            if isinstance(value, dict):
+                parts = []
+                for item in value.values():
+                    parts.extend(flatten(item))
+                return parts
+            if isinstance(value, list):
+                parts = []
+                for item in value:
+                    parts.extend(flatten(item))
+                return parts
+            return []
+
+        parts = []
+        for segment in message or []:
+            if not isinstance(segment, dict):
+                continue
+            data = segment.get("data") or {}
+            if segment.get("type") == "json" and isinstance(data.get("data"), str):
+                try:
+                    parts.extend(flatten(json.loads(data["data"])))
+                except (TypeError, ValueError):
+                    parts.append(data["data"])
+            else:
+                parts.extend(flatten(data.get("text") or data))
+        if parts:
+            return html.unescape(" ".join(parts))
+        raw = event.get("raw_message")
+        return html.unescape(raw) if isinstance(raw, str) else ""
 
     def _process(
         self, message_type: str, target_id: int, message_id: str, text: str,

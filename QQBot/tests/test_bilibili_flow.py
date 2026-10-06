@@ -33,8 +33,8 @@ def test_bilibili_link_replies_with_metadata_and_available_qualities(monkeypatch
         bvid="BV1xx411c7mD", aid=123, cid=456, page=2, title="解析测试", part="第二 P",
         author="UP 主", duration=125, cover_url="https://img/cover.jpg", description="",
         qualities=(
-            QualityOption(80, "1080P 高清", 1920, 1080, ("avc1",), ("https://cdn/high",)),
-            QualityOption(64, "720P 高清", 1280, 720, ("avc1",), ("https://cdn/low",)),
+            QualityOption(80, "1080P 高清", 1920, 1080, ("avc1",), ("https://cdn/high",), ("https://cdn/audio",)),
+            QualityOption(64, "720P 高清", 1280, 720, ("avc1",), ("https://cdn/low",), ("https://cdn/audio",)),
         ),
     )
     closed = []
@@ -56,14 +56,30 @@ def test_bilibili_link_replies_with_metadata_and_available_qualities(monkeypatch
         "download_file",
         lambda _url, directory, filename, **_kwargs: str(__import__("pathlib").Path(directory) / filename),
     )
+    monkeypatch.setattr(bot_service, "find_ffmpeg", lambda: "ffmpeg")
+    ffmpeg_calls = []
+    monkeypatch.setattr(
+        bot_service.subprocess,
+        "run",
+        lambda *args, **kwargs: ffmpeg_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        bot_service.BilibiliSettingsStore,
+        "load",
+        lambda _self: {"default_quality_id": 80},
+    )
     bot._process("private", 123, "msg-1", "", "https://www.bilibili.com/video/BV1xx411c7mD/", "bilibili")
 
     assert [call[0] for call in calls] == ["message", "message", "video"]
     assert calls[0][1][2][0]["type"] == "reply"
     assert "解析测试" in calls[1][1][2]
-    assert "1080P 高清 (1920x1080)" in calls[1][1][2]
-    assert "720P 高清 (1280x720)" in calls[1][1][2]
-    assert calls[2][1][2].endswith("80.mp4")
+    assert "1080P" not in calls[1][1][2]
+    assert "720P" not in calls[1][1][2]
+    assert calls[2][1][2].endswith("merged.mp4")
+    assert len(ffmpeg_calls) == 1
+    assert ffmpeg_calls[0][0][0][0] == "ffmpeg"
+    assert ffmpeg_calls[0][0][0][-1].endswith("merged.mp4")
+    assert any(argument.endswith("80.mp4") for argument in ffmpeg_calls[0][0][0])
     assert calls[2][2]["thumb"].endswith("thumb_BV1xx411c7mD.jpg")
     assert bot.stats["bilibili"] == 1
     assert closed == [True]

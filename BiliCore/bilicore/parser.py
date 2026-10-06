@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import re
 import time
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ QUALITY_NAMES = {
 
 
 def extract_bilibili_url(text: str) -> str | None:
+    text = html.unescape(text or "")
     match = re.search(
         r"https?://(?:www\.)?(?:bilibili\.com/video/[^\s]+|b23\.tv/[^\s]+)",
         text or "",
